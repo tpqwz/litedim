@@ -1,0 +1,7 @@
+*.o
+*.a
+litedim
+build/
+check/decide_test
+check/eva.log
+.frama-c/
