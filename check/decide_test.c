@@ -124,6 +124,12 @@ test_parse(void)
 	assert(c.kind == CMD_BAD);
 	c = parse_line("color ff00aa", 12);
 	assert(c.kind == CMD_COLOR && c.red == 255 && c.green == 0 && c.blue == 170);
+	c = parse_line("fg-alpha 40", 11);
+	assert(c.kind == CMD_FG_ALPHA && c.alpha == 40);
+	c = parse_line("fg-alpha 256", 12);
+	assert(c.kind == CMD_BAD);
+	c = parse_line("fg-color 010203", 15);
+	assert(c.kind == CMD_FG_COLOR && c.red == 1 && c.green == 2 && c.blue == 3);
 	c = parse_line("visible 0", 9);
 	assert(c.kind == CMD_VISIBLE && c.visible == 0);
 	c = parse_line("visible 2", 9);
@@ -131,10 +137,11 @@ test_parse(void)
 	c = parse_line("nope", 4);
 	assert(c.kind == CMD_BAD);
 
-	n = format_state(buf, 96, 96, 18, 52, 255, 0);
+	n = format_state(buf, 96, 96, 18, 52, 255, 40, 1, 2, 3, 0);
 	assert(n > 0 && n < 96);
-	assert(format_state(0, 96, 1, 0, 0, 0, 1) == -1);
-	assert(strcmp(buf, "alpha 96\ncolor 1234ff\nvisible 0\n") == 0);
+	assert(format_state(0, 96, 1, 0, 0, 0, 0, 0, 0, 0, 1) == -1);
+	assert(strcmp(buf,
+		"alpha 96\ncolor 1234ff\nfg-alpha 40\nfg-color 010203\nvisible 0\n") == 0);
 	while (i < n) {
 		if (buf[i] == '\n') {
 			c = parse_line(buf + start, i - start);
@@ -142,8 +149,12 @@ test_parse(void)
 				assert(c.kind == CMD_ALPHA && c.alpha == 96);
 			} else if (seen == 1) {
 				assert(c.kind == CMD_COLOR && c.red == 18 && c.green == 52 && c.blue == 255);
+			} else if (seen == 2) {
+				assert(c.kind == CMD_FG_ALPHA && c.alpha == 40);
+			} else if (seen == 3) {
+				assert(c.kind == CMD_FG_COLOR && c.red == 1 && c.green == 2 && c.blue == 3);
 			} else {
-				assert(seen == 2);
+				assert(seen == 4);
 				assert(c.kind == CMD_VISIBLE && c.visible == 0);
 			}
 			seen = seen + 1;
@@ -151,7 +162,8 @@ test_parse(void)
 		}
 		i = i + 1;
 	}
-	assert(seen == 3);
+	assert(seen == 5);
+	assert(format_state(buf, 96, 96, 0, 0, 0, 0, 0, 0, 0, 1) == 59);
 }
 
 int

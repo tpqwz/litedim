@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the X11 static libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config \
+            libx11-dev libxrender-dev libxfixes-dev libxext-dev \
+            libxcb1-dev libxau-dev libxdmcp-dev
+
+      - name: Unit test
+        run: make test
+
+      - name: Static executable
+        run: |
+          make
+          file litedim | grep -q 'statically linked'
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: litedim-linux-x86_64
+          path: litedim
+          if-no-files-found: error
+
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ver=$(sed -n 's/.*version_string\[\] = "\([^"]*\)".*/\1/p' src/litedim.c)
+          test -n "$ver"
+          test "v${ver}" = "${GITHUB_REF_NAME}"
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: litedim
+          name: ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          body: |
+            One Linux x86-64 executable, statically linked. Copy `litedim` and run it. The machine needs an X server and a compositor. It does not need a matching libX11.

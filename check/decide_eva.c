@@ -32,9 +32,9 @@ known_math(void)
 	premultiply(255, 0, 0, 128, &cr, &cg, &cb, &ca);
 	/*@ assert ca == 32896 && cr == 32896 && cg == 0 && cb == 0; */
 	premultiply(1, 2, 3, 4, (uint16_t *)0, &cg, &cb, &ca);
-	len = format_state(dst, 64, 96, 0, 0, 0, 1);
-	/*@ assert len == 32; */
-	len = format_state(dst, 64, 7, 255, 255, 255, 0);
+	len = format_state(dst, 64, 96, 0, 0, 0, 0, 0, 0, 0, 1);
+	/*@ assert len == 59; */
+	len = format_state(dst, 64, 7, 255, 255, 255, 0, 1, 2, 3, 0);
 	/*@ assert len > 0 && len < 64; */
 }
 
@@ -61,13 +61,15 @@ sweep(void)
 	(void)coverage_u16(s);
 	(void)coverage_u16(Frama_C_interval(-5, 300));
 	premultiply(ch, ch, ch, s, &cr, &cg, &cb, &ca);
-	len = format_state(dst, 64, s, ch, ch, ch, visible);
+	len = format_state(dst, 64, s, ch, ch, ch, s, ch, ch, ch, visible);
 	/*@ assert len >= 0 && len < 64; */
 	act = decide_place(n, sheet_at, frame_at, desk_at, have_frame);
 	ok = place_sibling_ok(&act, n);
 	/* The value analysis does not keep sibling < n on this wide interval. */
 	(void)ok;
 	(void)parse_line("alpha 128", 9);
+	(void)parse_line("fg-alpha 40", 11);
+	(void)parse_line("fg-color 00ff00", 15);
 	(void)parse_line("color 00ff00", 12);
 	(void)parse_line("visible 0", 9);
 	(void)parse_line(0, 0);

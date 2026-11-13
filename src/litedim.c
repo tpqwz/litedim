@@ -20,17 +20,28 @@
 enum { DEFAULT_ALPHA = 96 };
 enum { LISTEN_BACKLOG = 8 };
 
+static const char version_string[] = "0.1.0-beta.1";
+
 static Display *dpy;
 static int scr;
 static Window root;
 static Window sheet;
+static Window front;
+static Window dialog;
 static Picture pict;
+static Picture front_pict;
 static int sw;
 static int sh;
 static int strength = DEFAULT_ALPHA;
 static int red;
 static int green;
 static int blue;
+static int fg_strength;
+static int fg_red;
+static int fg_green;
+static int fg_blue;
+static int front_w;
+static int front_h;
 static int visible = 1;
 static int no_tray;
 static Window active_frame;
@@ -116,17 +127,46 @@ static void
 usage(int fd)
 {
 	static const char text[] =
-		"usage: litedim [--alpha N] [--color RRGGBB] [--no-tray]\n"
+		"usage: litedim [--alpha N] [--color RRGGBB]\n"
+		"               [--fg-alpha N] [--fg-color RRGGBB] [--no-tray]\n"
+		"       litedim --version\n"
 		"\n"
 		"Dim everything stacked under the focused window.\n"
-		"N is the coverage, 0 through 255. The default is 96.\n"
-		"RRGGBB tints the sheet. The default is black, 000000.\n"
-		"0 leaves the sheet unmapped.\n"
+		"N is the coverage, 0 through 255. The background default is 96.\n"
+		"RRGGBB tints that shade. The default is black, 000000.\n"
+		"--alpha 0 leaves the shades unmapped and keeps the saved level.\n"
+		"--fg-alpha and --fg-color shade the focused window itself.\n"
+		"The foreground default is 0, so that window stays bright.\n"
 		"The tray icon and the settings window are part of this program.\n"
 		"--no-tray does not create them.\n";
 	ssize_t w;
 
 	w = write(fd, text, sizeof text - 1u);
+	if (w < 0) {
+		w = 0;
+	} else {
+		w = w;
+	}
+}
+
+static void
+print_version(int fd)
+{
+	ssize_t w;
+
+	w = write(fd, "litedim ", 8);
+	if (w < 0) {
+		w = 0;
+	} else {
+		w = w;
+	}
+	w = write(fd, version_string, sizeof version_string - 1u);
+	if (w < 0) {
+		w = 0;
+	} else {
+		w = w;
+	}
+	w = write(fd, "\n", 1);
 	if (w < 0) {
 		w = 0;
 	} else {
@@ -337,6 +377,12 @@ apply_config_cmd(const cmd *c)
 		red = c->red;
 		green = c->green;
 		blue = c->blue;
+	} else if (c->kind == CMD_FG_ALPHA) {
+		fg_strength = c->alpha;
+	} else if (c->kind == CMD_FG_COLOR) {
+		fg_red = c->red;
+		fg_green = c->green;
+		fg_blue = c->blue;
 	} else if (c->kind == CMD_VISIBLE) {
 		if (c->visible == 0) {
 			visible = 0;
@@ -401,7 +447,8 @@ save_config(void)
 	ssize_t w;
 	int ok = 1;
 
-	n = format_state(body, (int)sizeof body, strength, red, green, blue, visible);
+	n = format_state(body, (int)sizeof body, strength, red, green, blue,
+		fg_strength, fg_red, fg_green, fg_blue, visible);
 	if (n < 0) {
 		return 0;
 	}
@@ -674,7 +721,7 @@ find_argb_visual(void)
 }
 
 static void
-paint(void)
+fill_picture(Picture picture, int r, int g, int b, int alpha, int w, int h)
 {
 	XRenderColor c;
 	uint16_t cr;
@@ -682,26 +729,46 @@ paint(void)
 	uint16_t cb;
 	uint16_t ca;
 
-	if ((visible == 0) || (pict == 0)) {
+	if ((picture == 0) || (w < 1) || (h < 1)) {
 		return;
 	}
-	premultiply(red, green, blue, strength, &cr, &cg, &cb, &ca);
+	premultiply(r, g, b, alpha, &cr, &cg, &cb, &ca);
 	c.red = cr;
 	c.green = cg;
 	c.blue = cb;
 	c.alpha = ca;
-	XRenderFillRectangle(dpy, PictOpSrc, pict, &c, 0, 0, (unsigned)sw, (unsigned)sh);
+	XRenderFillRectangle(dpy, PictOpSrc, picture, &c, 0, 0, (unsigned)w, (unsigned)h);
 }
 
 static void
-click_through(void)
+paint(void)
+{
+	if (visible == 0) {
+		return;
+	}
+	fill_picture(pict, red, green, blue, strength, sw, sh);
+}
+
+static void
+paint_front(void)
+{
+	fill_picture(front_pict, fg_red, fg_green, fg_blue, fg_strength, front_w, front_h);
+}
+
+static void
+click_through(Window w)
 {
 	/*
 	 * An empty region is not the same as passing None. None would restore
 	 * the default input shape, and the sheet would take clicks.
 	 */
-	XserverRegion empty = XFixesCreateRegion(dpy, 0, 0);
-	XFixesSetWindowShapeRegion(dpy, sheet, ShapeInput, 0, 0, empty);
+	XserverRegion empty;
+
+	if (w == 0) {
+		return;
+	}
+	empty = XFixesCreateRegion(dpy, 0, 0);
+	XFixesSetWindowShapeRegion(dpy, w, ShapeInput, 0, 0, empty);
 	XFixesDestroyRegion(dpy, empty);
 }
 
@@ -859,7 +926,7 @@ active_window(void)
 	} else {
 		data = 0;
 	}
-	if (w == sheet) {
+	if ((w == sheet) || (w == front)) {
 		w = 0;
 	} else {
 		w = w;
@@ -900,16 +967,60 @@ find_desktop_frame(void)
 }
 
 static void
-stack_against(Window sibling, int mode)
+stack_window(Window w, Window sibling, int mode)
 {
 	XWindowChanges ch;
 
-	if ((sibling == 0) || (sibling == sheet)) {
+	if ((w == 0) || (sibling == 0) || (w == sibling)) {
 		return;
 	}
 	ch.sibling = sibling;
 	ch.stack_mode = mode;
-	XConfigureWindow(dpy, sheet, CWSibling | CWStackMode, &ch);
+	XConfigureWindow(dpy, w, CWSibling | CWStackMode, &ch);
+}
+
+static void
+unmap_front(void)
+{
+	if (front != 0) {
+		XUnmapWindow(dpy, front);
+	} else {
+		front = front;
+	}
+}
+
+static void
+place_front(Window frame, Window client)
+{
+	XWindowAttributes attr;
+	XWindowChanges ch;
+
+	if ((front == 0) || (visible == 0) || (fg_strength <= 0) || (frame == 0) ||
+	    ((dialog != 0) && (client == dialog))) {
+		unmap_front();
+		return;
+	}
+	if (XGetWindowAttributes(dpy, frame, &attr) == 0) {
+		unmap_front();
+		return;
+	}
+	if ((attr.map_state != IsViewable) || (attr.width < 1) || (attr.height < 1)) {
+		unmap_front();
+		return;
+	}
+	front_w = attr.width;
+	front_h = attr.height;
+	ch.x = attr.x;
+	ch.y = attr.y;
+	ch.width = attr.width;
+	ch.height = attr.height;
+	ch.sibling = frame;
+	ch.stack_mode = Above;
+	/* Map raises the window. Restack it in the same burst, just above the frame. */
+	XMapWindow(dpy, front);
+	XConfigureWindow(dpy, front,
+		CWX | CWY | CWWidth | CWHeight | CWSibling | CWStackMode, &ch);
+	paint_front();
 }
 
 static void
@@ -923,7 +1034,7 @@ place(void)
 	int have_frame = 0;
 	place_act act;
 	Window client;
-	Window frame;
+	Window frame = 0;
 	Window desk;
 
 	if (visible == 0) {
@@ -935,6 +1046,7 @@ place(void)
 	}
 	if (n > (unsigned)DECIDE_MAX_CHILDREN) {
 		XLowerWindow(dpy, sheet);
+		unmap_front();
 		XFree(kids);
 		return;
 	}
@@ -974,15 +1086,21 @@ place(void)
 		act.kind = act.kind;
 	}
 	if (act.kind == PLACE_BELOW) {
-		stack_against(kids[act.sibling], Below);
+		stack_window(sheet, kids[act.sibling], Below);
 	} else if (act.kind == PLACE_ABOVE) {
-		stack_against(kids[act.sibling], Above);
+		stack_window(sheet, kids[act.sibling], Above);
 	} else if (act.kind == PLACE_LOWER) {
 		XLowerWindow(dpy, sheet);
 	} else {
 		act.kind = PLACE_NONE;
 	}
+	if (have_frame == 0) {
+		frame = 0;
+	} else {
+		frame = frame;
+	}
 	XFree(kids);
+	place_front(frame, client);
 }
 
 static void
@@ -1001,6 +1119,7 @@ hide_sheet(void)
 	visible = 0;
 	active_frame = 0;
 	XUnmapWindow(dpy, sheet);
+	unmap_front();
 }
 
 static int
@@ -1047,8 +1166,60 @@ create_sheet(void)
 			say("litedim: cannot create a Render picture\n");
 			ok = 0;
 		} else {
-			click_through();
+			click_through(sheet);
 			paint();
+		}
+	}
+	return ok;
+}
+
+static int
+create_front(void)
+{
+	XSetWindowAttributes attr;
+	XRenderPictFormat *fmt;
+	Colormap cmap;
+	Visual *argb;
+	XClassHint class_hint;
+	int ok = 1;
+
+	argb = find_argb_visual();
+	if (argb == 0) {
+		say("litedim: no 32-bit ARGB visual for the focused window\n");
+		return 0;
+	}
+	fmt = XRenderFindVisualFormat(dpy, argb);
+	if (fmt == 0) {
+		say("litedim: no Render format for the focused window\n");
+		return 0;
+	}
+	cmap = XCreateColormap(dpy, root, argb, AllocNone);
+	memset(&attr, 0, sizeof attr);
+	attr.override_redirect = True;
+	attr.colormap = cmap;
+	attr.background_pixmap = None;
+	attr.border_pixel = 0;
+	attr.event_mask = ExposureMask;
+	front_w = 1;
+	front_h = 1;
+	front = XCreateWindow(dpy, root, 0, 0, 1u, 1u, 0,
+		32, InputOutput, argb,
+		CWOverrideRedirect | CWColormap | CWBackPixmap | CWBorderPixel | CWEventMask,
+		&attr);
+	if (front == 0) {
+		say("litedim: cannot create the foreground shade\n");
+		ok = 0;
+	} else {
+		class_hint.res_name = "litedim-front";
+		class_hint.res_class = "Litedim";
+		XSetClassHint(dpy, front, &class_hint);
+		XStoreName(dpy, front, "litedim-front");
+		front_pict = XRenderCreatePicture(dpy, front, fmt, 0, 0);
+		if (front_pict == 0) {
+			say("litedim: cannot create the foreground picture\n");
+			ok = 0;
+		} else {
+			click_through(front);
 		}
 	}
 	return ok;
@@ -1065,6 +1236,8 @@ handle(XEvent *ev)
 	if (ev->type == Expose) {
 		if ((ev->xexpose.window == sheet) && (ev->xexpose.count == 0)) {
 			paint();
+		} else if ((ev->xexpose.window == front) && (ev->xexpose.count == 0)) {
+			paint_front();
 		} else {
 			ev = ev;
 		}
@@ -1159,7 +1332,8 @@ reply_status(int fd)
 	ssize_t w;
 	int off = 0;
 
-	n = format_state(body, (int)sizeof body, strength, red, green, blue, visible);
+	n = format_state(body, (int)sizeof body, strength, red, green, blue,
+		fg_strength, fg_red, fg_green, fg_blue, visible);
 	if (n <= 0) {
 		return;
 	}
@@ -1183,16 +1357,19 @@ static void
 apply_cmd(const cmd *c)
 {
 	if (c->kind == CMD_ALPHA) {
-		if (c->alpha == 0) {
-			strength = 0;
-			hide_sheet();
+		int was = strength;
+
+		strength = c->alpha;
+		if (visible == 0) {
+			was = was;
+		} else if (strength == 0) {
+			XUnmapWindow(dpy, sheet);
+		} else if (was == 0) {
+			XMapWindow(dpy, sheet);
+			paint();
+			place();
 		} else {
-			strength = c->alpha;
-			if (visible != 0) {
-				paint();
-			} else {
-				show_sheet();
-			}
+			paint();
 		}
 		if (save_config() == 0) {
 			say("litedim: cannot save the settings\n");
@@ -1237,6 +1414,36 @@ apply_cmd(const cmd *c)
 			say("litedim: cannot save the settings\n");
 		} else {
 			visible = visible;
+		}
+	} else if (c->kind == CMD_FG_ALPHA) {
+		int was = fg_strength;
+
+		fg_strength = c->alpha;
+		if (visible == 0) {
+			was = was;
+		} else if ((was == 0) || (fg_strength == 0)) {
+			place();
+		} else {
+			paint_front();
+		}
+		if (save_config() == 0) {
+			say("litedim: cannot save the settings\n");
+		} else {
+			fg_strength = fg_strength;
+		}
+	} else if (c->kind == CMD_FG_COLOR) {
+		fg_red = c->red;
+		fg_green = c->green;
+		fg_blue = c->blue;
+		if ((visible != 0) && (fg_strength > 0)) {
+			paint_front();
+		} else {
+			fg_red = fg_red;
+		}
+		if (save_config() == 0) {
+			say("litedim: cannot save the settings\n");
+		} else {
+			fg_red = fg_red;
 		}
 	} else if (c->kind == CMD_QUIT) {
 		quit_flag = 1;
@@ -1289,30 +1496,37 @@ serve_once(void)
 
 enum { ICON_SIZE = 22 };
 enum { DLG_W = 280 };
-enum { DLG_H = 230 };
+enum { DLG_H = 372 };
 enum { SLIDER_X = 16 };
 enum { SLIDER_W = 248 };
 enum { SLIDER_H = 16 };
-enum { LEVEL_Y = 36 };
-enum { RED_Y = 78 };
-enum { GREEN_Y = 114 };
-enum { BLUE_Y = 150 };
+enum { BG_LEVEL_Y = 36 };
+enum { BG_RED_Y = 72 };
+enum { BG_GREEN_Y = 108 };
+enum { BG_BLUE_Y = 144 };
+enum { FG_LEVEL_Y = 196 };
+enum { FG_RED_Y = 232 };
+enum { FG_GREEN_Y = 268 };
+enum { FG_BLUE_Y = 304 };
 enum { PREVIEW_X = 16 };
-enum { PREVIEW_Y = 182 };
+enum { PREVIEW_Y = 332 };
 enum { PREVIEW_S = 32 };
-enum { HIDE_X = 56 };
-enum { QUIT_X = 164 };
-enum { BTN_Y = 182 };
-enum { BTN_W = 100 };
+enum { HIDE_X = 96 };
+enum { QUIT_X = 188 };
+enum { BTN_Y = 332 };
+enum { BTN_W = 84 };
 enum { BTN_H = 32 };
 enum { DRAG_NONE = 0 };
 enum { DRAG_LEVEL = 1 };
 enum { DRAG_RED = 2 };
 enum { DRAG_GREEN = 3 };
 enum { DRAG_BLUE = 4 };
+enum { DRAG_FG_LEVEL = 5 };
+enum { DRAG_FG_RED = 6 };
+enum { DRAG_FG_GREEN = 7 };
+enum { DRAG_FG_BLUE = 8 };
 
 static Window icon;
-static Window dialog;
 static GC ui_gc;
 static XFontStruct *ui_font;
 static int dialog_up;
@@ -1528,6 +1742,26 @@ draw_slider(int y, int value, unsigned long fill, const char *label)
 	}
 }
 
+static unsigned long
+preview_pixel(int r, int g, int b, int cover)
+{
+	int pr;
+	int pg;
+	int pb;
+
+	if (cover < 0) {
+		cover = 0;
+	} else if (cover > 255) {
+		cover = 255;
+	} else {
+		cover = cover;
+	}
+	pr = ((r * cover) + (255 * (255 - cover))) / 255;
+	pg = ((g * cover) + (255 * (255 - cover))) / 255;
+	pb = ((b * cover) + (255 * (255 - cover))) / 255;
+	return pixel_of(pr, pg, pb);
+}
+
 static void
 paint_dialog(void)
 {
@@ -1535,10 +1769,6 @@ paint_dialog(void)
 	unsigned long text;
 	unsigned long btn;
 	char num[8];
-	int pr;
-	int pg;
-	int pb;
-	int cover;
 	const char *hide_label;
 
 	if ((dialog == 0) || (ui_gc == 0)) {
@@ -1548,24 +1778,24 @@ paint_dialog(void)
 	text = pixel_of(230, 230, 226);
 	btn = pixel_of(58, 58, 64);
 	fill_rect(dialog, 0, 0, DLG_W, DLG_H, bg);
+	draw_text(dialog, SLIDER_X, 14, "Background", text);
 	fmt_u(num, (int)sizeof num, (unsigned)strength);
-	draw_text(dialog, 220, LEVEL_Y - 8, num, text);
-	draw_slider(LEVEL_Y, strength, pixel_of(210, 210, 206), "Level");
-	draw_slider(RED_Y, red, pixel_of(196, 64, 64), "Red");
-	draw_slider(GREEN_Y, green, pixel_of(64, 168, 96), "Green");
-	draw_slider(BLUE_Y, blue, pixel_of(72, 112, 196), "Blue");
-	cover = strength;
-	if (cover < 0) {
-		cover = 0;
-	} else if (cover > 255) {
-		cover = 255;
-	} else {
-		cover = cover;
-	}
-	pr = ((red * cover) + (255 * (255 - cover))) / 255;
-	pg = ((green * cover) + (255 * (255 - cover))) / 255;
-	pb = ((blue * cover) + (255 * (255 - cover))) / 255;
-	fill_rect(dialog, PREVIEW_X, PREVIEW_Y, PREVIEW_S, PREVIEW_S, pixel_of(pr, pg, pb));
+	draw_text(dialog, 220, BG_LEVEL_Y - 8, num, text);
+	draw_slider(BG_LEVEL_Y, strength, pixel_of(210, 210, 206), "Level");
+	draw_slider(BG_RED_Y, red, pixel_of(196, 64, 64), "Red");
+	draw_slider(BG_GREEN_Y, green, pixel_of(64, 168, 96), "Green");
+	draw_slider(BG_BLUE_Y, blue, pixel_of(72, 112, 196), "Blue");
+	draw_text(dialog, SLIDER_X, 174, "Foreground", text);
+	fmt_u(num, (int)sizeof num, (unsigned)fg_strength);
+	draw_text(dialog, 220, FG_LEVEL_Y - 8, num, text);
+	draw_slider(FG_LEVEL_Y, fg_strength, pixel_of(210, 210, 206), "Level");
+	draw_slider(FG_RED_Y, fg_red, pixel_of(196, 64, 64), "Red");
+	draw_slider(FG_GREEN_Y, fg_green, pixel_of(64, 168, 96), "Green");
+	draw_slider(FG_BLUE_Y, fg_blue, pixel_of(72, 112, 196), "Blue");
+	fill_rect(dialog, PREVIEW_X, PREVIEW_Y, PREVIEW_S, PREVIEW_S,
+		preview_pixel(red, green, blue, strength));
+	fill_rect(dialog, PREVIEW_X + 36, PREVIEW_Y, PREVIEW_S, PREVIEW_S,
+		preview_pixel(fg_red, fg_green, fg_blue, fg_strength));
 	fill_rect(dialog, HIDE_X, BTN_Y, BTN_W, BTN_H, btn);
 	fill_rect(dialog, QUIT_X, BTN_Y, BTN_W, BTN_H, btn);
 	if (visible != 0) {
@@ -1573,8 +1803,8 @@ paint_dialog(void)
 	} else {
 		hide_label = "Show";
 	}
-	draw_text(dialog, HIDE_X + 32, BTN_Y + 20, hide_label, text);
-	draw_text(dialog, QUIT_X + 34, BTN_Y + 20, "Quit", text);
+	draw_text(dialog, HIDE_X + 26, BTN_Y + 20, hide_label, text);
+	draw_text(dialog, QUIT_X + 26, BTN_Y + 20, "Quit", text);
 }
 
 static void
@@ -1740,14 +1970,22 @@ slider_at(int x, int y)
 	if ((x < SLIDER_X) || (x >= (SLIDER_X + SLIDER_W))) {
 		return DRAG_NONE;
 	}
-	if ((y >= LEVEL_Y) && (y < (LEVEL_Y + SLIDER_H))) {
+	if ((y >= BG_LEVEL_Y) && (y < (BG_LEVEL_Y + SLIDER_H))) {
 		which = DRAG_LEVEL;
-	} else if ((y >= RED_Y) && (y < (RED_Y + SLIDER_H))) {
+	} else if ((y >= BG_RED_Y) && (y < (BG_RED_Y + SLIDER_H))) {
 		which = DRAG_RED;
-	} else if ((y >= GREEN_Y) && (y < (GREEN_Y + SLIDER_H))) {
+	} else if ((y >= BG_GREEN_Y) && (y < (BG_GREEN_Y + SLIDER_H))) {
 		which = DRAG_GREEN;
-	} else if ((y >= BLUE_Y) && (y < (BLUE_Y + SLIDER_H))) {
+	} else if ((y >= BG_BLUE_Y) && (y < (BG_BLUE_Y + SLIDER_H))) {
 		which = DRAG_BLUE;
+	} else if ((y >= FG_LEVEL_Y) && (y < (FG_LEVEL_Y + SLIDER_H))) {
+		which = DRAG_FG_LEVEL;
+	} else if ((y >= FG_RED_Y) && (y < (FG_RED_Y + SLIDER_H))) {
+		which = DRAG_FG_RED;
+	} else if ((y >= FG_GREEN_Y) && (y < (FG_GREEN_Y + SLIDER_H))) {
+		which = DRAG_FG_GREEN;
+	} else if ((y >= FG_BLUE_Y) && (y < (FG_BLUE_Y + SLIDER_H))) {
+		which = DRAG_FG_BLUE;
 	} else {
 		which = DRAG_NONE;
 	}
@@ -1789,6 +2027,27 @@ ui_apply_drag(int which, int value)
 		c.green = value;
 	} else if (which == DRAG_BLUE) {
 		c.kind = CMD_COLOR;
+		c.blue = value;
+	} else if (which == DRAG_FG_LEVEL) {
+		c.kind = CMD_FG_ALPHA;
+		c.alpha = value;
+	} else if (which == DRAG_FG_RED) {
+		c.kind = CMD_FG_COLOR;
+		c.red = fg_red;
+		c.green = fg_green;
+		c.blue = fg_blue;
+		c.red = value;
+	} else if (which == DRAG_FG_GREEN) {
+		c.kind = CMD_FG_COLOR;
+		c.red = fg_red;
+		c.green = fg_green;
+		c.blue = fg_blue;
+		c.green = value;
+	} else if (which == DRAG_FG_BLUE) {
+		c.kind = CMD_FG_COLOR;
+		c.red = fg_red;
+		c.green = fg_green;
+		c.blue = fg_blue;
 		c.blue = value;
 	} else {
 		which = DRAG_NONE;
@@ -2066,17 +2325,24 @@ ui_init(void)
 static void
 announce(void)
 {
-	say("litedim: ");
+	say("litedim ");
+	say(version_string);
 	if (visible != 0) {
-		say("alpha ");
+		say(": alpha ");
 	} else {
-		say("hidden, alpha ");
+		say(": hidden, alpha ");
 	}
 	say_u((unsigned)strength);
 	say(" color ");
 	say_hex2(red);
 	say_hex2(green);
 	say_hex2(blue);
+	say(" front ");
+	say_u((unsigned)fg_strength);
+	say(" color ");
+	say_hex2(fg_red);
+	say_hex2(fg_green);
+	say_hex2(fg_blue);
 	say("\n");
 }
 
@@ -2148,15 +2414,24 @@ main(int argc, char **argv)
 	int errb;
 	int have_alpha = 0;
 	int have_color = 0;
+	int have_fg_alpha = 0;
+	int have_fg_color = 0;
 	int cli_alpha = 0;
 	int cli_red = 0;
 	int cli_green = 0;
 	int cli_blue = 0;
+	int cli_fg_alpha = 0;
+	int cli_fg_red = 0;
+	int cli_fg_green = 0;
+	int cli_fg_blue = 0;
 	int xfd;
 
 	for (i = 1; i < argc; i = i + 1) {
 		if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
 			usage(STDOUT_FILENO);
+			return 0;
+		} else if (strcmp(argv[i], "--version") == 0) {
+			print_version(STDOUT_FILENO);
 			return 0;
 		} else if ((strcmp(argv[i], "-a") == 0) || (strcmp(argv[i], "--alpha") == 0)) {
 			if ((i + 1) >= argc) {
@@ -2180,6 +2455,29 @@ main(int argc, char **argv)
 				return 2;
 			}
 			have_color = 1;
+		} else if (strcmp(argv[i], "--fg-alpha") == 0) {
+			if ((i + 1) >= argc) {
+				usage(STDERR_FILENO);
+				return 2;
+			}
+			i = i + 1;
+			if (parse_u8(argv[i], (int)strlen(argv[i]), &cli_fg_alpha) == 0) {
+				say("litedim: fg-alpha must be 0..255\n");
+				return 2;
+			}
+			have_fg_alpha = 1;
+		} else if (strcmp(argv[i], "--fg-color") == 0) {
+			if ((i + 1) >= argc) {
+				usage(STDERR_FILENO);
+				return 2;
+			}
+			i = i + 1;
+			if (parse_color(argv[i], (int)strlen(argv[i]),
+				&cli_fg_red, &cli_fg_green, &cli_fg_blue) == 0) {
+				say("litedim: fg-color must be RRGGBB\n");
+				return 2;
+			}
+			have_fg_color = 1;
 		} else if (strcmp(argv[i], "--no-tray") == 0) {
 			no_tray = 1;
 		} else {
@@ -2214,6 +2512,18 @@ main(int argc, char **argv)
 		blue = cli_blue;
 	} else {
 		have_color = 0;
+	}
+	if (have_fg_alpha != 0) {
+		fg_strength = cli_fg_alpha;
+	} else {
+		have_fg_alpha = 0;
+	}
+	if (have_fg_color != 0) {
+		fg_red = cli_fg_red;
+		fg_green = cli_fg_green;
+		fg_blue = cli_fg_blue;
+	} else {
+		have_fg_color = 0;
 	}
 	if (daemon_alive() != 0) {
 		say("litedim: already running\n");
@@ -2277,6 +2587,17 @@ main(int argc, char **argv)
 		cleanup_listen();
 		return 1;
 	}
+	if (create_front() == 0) {
+		say("litedim: continuing without a foreground shade\n");
+		if (front != 0) {
+			XDestroyWindow(dpy, front);
+		} else {
+			front = front;
+		}
+		front = 0;
+	} else {
+		front = front;
+	}
 	XSelectInput(dpy, root,
 		PropertyChangeMask | StructureNotifyMask | SubstructureNotifyMask);
 	if (save_config() == 0) {
@@ -2296,7 +2617,13 @@ main(int argc, char **argv)
 	}
 	run();
 	XUnmapWindow(dpy, sheet);
+	unmap_front();
 	XDestroyWindow(dpy, sheet);
+	if (front != 0) {
+		XDestroyWindow(dpy, front);
+	} else {
+		front = front;
+	}
 	XCloseDisplay(dpy);
 	cleanup_listen();
 	return 0;

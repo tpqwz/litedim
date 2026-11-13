@@ -11,13 +11,19 @@ LIBS    := $(shell pkg-config --static --libs xrender xfixes xext x11)
 CITE    ?= /home/yy/code/offside/cite/build/cite
 SRCS    := src/litedim.c src/decide.c
 
-.PHONY: all clean check
+.PHONY: all clean check test
 
 all: litedim
 
 litedim: $(SRCS) src/decide.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $(SRCS) $(LDFLAGS) $(LIBS)
 	strip $@
+
+test: check/decide_test
+	./check/decide_test
+
+check/decide_test: check/decide_test.c src/decide.c src/decide.h
+	$(CC) -std=c11 -Wall -Wextra -Werror -Isrc -o $@ check/decide_test.c src/decide.c
 
 check: $(SRCS) src/decide.h check/decide_test.c check/decide_eva.c
 	$(CITE) src

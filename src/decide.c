@@ -341,6 +341,22 @@ parse_line(const char *s, int len)
 		c.kind = CMD_QUIT;
 	} else if ((starts(s, len, "status") == 1) && (len == 6)) {
 		c.kind = CMD_STATUS;
+	} else if ((starts(s, len, "fg-alpha ") == 1) && (len > 9)) {
+		if ((parse_u8(s + 9, len - 9, &c.alpha) == 1) && (tail_ok(s, len, len) == 1)) {
+			c.kind = CMD_FG_ALPHA;
+		} else {
+			c.kind = CMD_BAD;
+		}
+	} else if ((starts(s, len, "fg-color ") == 1) && (len >= 15)) {
+		if (parse_color(s + 9, 6, &c.red, &c.green, &c.blue) == 1) {
+			if (tail_ok(s, len, 15) == 1) {
+				c.kind = CMD_FG_COLOR;
+			} else {
+				c.kind = CMD_BAD;
+			}
+		} else {
+			c.kind = CMD_BAD;
+		}
 	} else if ((starts(s, len, "alpha ") == 1) && (len > 6)) {
 		if ((parse_u8(s + 6, len - 6, &c.alpha) == 1) && (tail_ok(s, len, len) == 1)) {
 			c.kind = CMD_ALPHA;
@@ -375,18 +391,25 @@ parse_line(const char *s, int len)
 }
 
 int
-format_state(char *dst, int cap, int alpha, int red, int green, int blue, int visible)
+format_state(char *dst, int cap, int alpha, int red, int green, int blue,
+	int fg_alpha, int fg_red, int fg_green, int fg_blue, int visible)
 {
 	int at = 0;
 	unsigned vis = 0u;
 
-	if ((dst == 0) || (cap < 48)) {
+	if ((dst == 0) || (cap < 64)) {
 		return -1;
 	}
 	if ((alpha < 0) || (alpha > 255) || (red < 0) || (red > 255)) {
 		return -1;
 	}
 	if ((green < 0) || (green > 255) || (blue < 0) || (blue > 255)) {
+		return -1;
+	}
+	if ((fg_alpha < 0) || (fg_alpha > 255) || (fg_red < 0) || (fg_red > 255)) {
+		return -1;
+	}
+	if ((fg_green < 0) || (fg_green > 255) || (fg_blue < 0) || (fg_blue > 255)) {
 		return -1;
 	}
 	if (visible != 0) {
@@ -400,6 +423,12 @@ format_state(char *dst, int cap, int alpha, int red, int green, int blue, int vi
 	at = put_hex2(dst, cap, at, red);
 	at = put_hex2(dst, cap, at, green);
 	at = put_hex2(dst, cap, at, blue);
+	at = put_str(dst, cap, at, "\nfg-alpha ");
+	at = put_u(dst, cap, at, (unsigned)fg_alpha);
+	at = put_str(dst, cap, at, "\nfg-color ");
+	at = put_hex2(dst, cap, at, fg_red);
+	at = put_hex2(dst, cap, at, fg_green);
+	at = put_hex2(dst, cap, at, fg_blue);
 	at = put_str(dst, cap, at, "\nvisible ");
 	at = put_u(dst, cap, at, vis);
 	at = put_str(dst, cap, at, "\n");

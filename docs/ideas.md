@@ -109,13 +109,15 @@ On this desk the panels are the top three windows in `_NET_CLIENT_LIST_STACKING`
 
 **Toggle.** LeDimmer quits on Ctrl+Shift+Q and has a tray icon. litedim's icon is docked with the panel's system tray. Left click opens the level and the color. Right click hides the sheet and keeps the level. Quit is a button on the settings window. There is no second program.
 
-**What the first version leaves out.** Animation of the strength. A separate, smaller dim on the focused window (that needs per-window multiply, because a second sheet above the focused window would also cover the panel). Per-window exceptions other than docks. A BMP image in place of flat black, which LeDimmer had as `-image`.
+**Foreground.** A second override-redirect sheet, the size of the focused frame, stacked directly above that frame. It uses the same premultiplied tint as the background sheet, with its own level and color (`--fg-alpha`, `--fg-color`, and the Foreground sliders). The default level is 0, so the focused window stays bright. The sheet is not fullscreen, so a panel stacked above the frame stays bright, and a menu stacked above the frame stays bright. While the settings window is the active client, the foreground sheet is unmapped so the controls stay clear. This is shade coverage, not `_NET_WM_WINDOW_OPACITY`: the focused window does not become see-through.
+
+**What this version leaves out.** Animation of the strength. Per-window exceptions other than docks and the settings window. A BMP image in place of flat black, which LeDimmer had as `-image`. Group tracking, so a dialog and its parent can both stay bright.
 
 ## Order of work
 
 1. `src/litedim.c` maps the sheet, punches an empty input shape, and restacks it under the focused frame when `_NET_ACTIVE_WINDOW` changes. Alpha comes from `--alpha`. `make` writes the static binary. It has been run on this session with xfwm4's compositor left on.
 2. Watch the real annoyances: menus landing under the sheet, the panel dimming, the sheet stealing focus, a fullscreen video, a window moving to another monitor. Fix those before adding a GUI.
-3. The tray, the level slider, and the color sliders are in the `litedim` binary. The socket still accepts `alpha`, `color`, `show`, `hide`, `status`, and `quit`.
+3. The tray and the settings window are in the `litedim` binary. Background level and color, and foreground level and color, are separate. The socket accepts `alpha`, `color`, `fg-alpha`, `fg-color`, `show`, `hide`, `status`, and `quit`.
 4. Only if the sheet cannot be made to stack reliably, patch `paint_win` in xfwm4, or run picom with `dim` rules and xfwm4 compositing off.
 
 picom is available as a preview of per-window darkening. Turning xfwm4's compositor off changes this session's shadows and opacity, so that preview waits for an explicit go-ahead.
