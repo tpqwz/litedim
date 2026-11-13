@@ -341,6 +341,22 @@ parse_line(const char *s, int len)
 		c.kind = CMD_QUIT;
 	} else if ((starts(s, len, "status") == 1) && (len == 6)) {
 		c.kind = CMD_STATUS;
+	} else if ((starts(s, len, "prev-alpha ") == 1) && (len > 11)) {
+		if ((parse_u8(s + 11, len - 11, &c.alpha) == 1) && (tail_ok(s, len, len) == 1)) {
+			c.kind = CMD_PREV_ALPHA;
+		} else {
+			c.kind = CMD_BAD;
+		}
+	} else if ((starts(s, len, "prev-color ") == 1) && (len >= 17)) {
+		if (parse_color(s + 11, 6, &c.red, &c.green, &c.blue) == 1) {
+			if (tail_ok(s, len, 17) == 1) {
+				c.kind = CMD_PREV_COLOR;
+			} else {
+				c.kind = CMD_BAD;
+			}
+		} else {
+			c.kind = CMD_BAD;
+		}
 	} else if ((starts(s, len, "fg-alpha ") == 1) && (len > 9)) {
 		if ((parse_u8(s + 9, len - 9, &c.alpha) == 1) && (tail_ok(s, len, len) == 1)) {
 			c.kind = CMD_FG_ALPHA;
@@ -392,12 +408,13 @@ parse_line(const char *s, int len)
 
 int
 format_state(char *dst, int cap, int alpha, int red, int green, int blue,
-	int fg_alpha, int fg_red, int fg_green, int fg_blue, int visible)
+	int fg_alpha, int fg_red, int fg_green, int fg_blue,
+	int prev_alpha, int prev_red, int prev_green, int prev_blue, int visible)
 {
 	int at = 0;
 	unsigned vis = 0u;
 
-	if ((dst == 0) || (cap < 64)) {
+	if ((dst == 0) || (cap < 112)) {
 		return -1;
 	}
 	if ((alpha < 0) || (alpha > 255) || (red < 0) || (red > 255)) {
@@ -410,6 +427,12 @@ format_state(char *dst, int cap, int alpha, int red, int green, int blue,
 		return -1;
 	}
 	if ((fg_green < 0) || (fg_green > 255) || (fg_blue < 0) || (fg_blue > 255)) {
+		return -1;
+	}
+	if ((prev_alpha < 0) || (prev_alpha > 255) || (prev_red < 0) || (prev_red > 255)) {
+		return -1;
+	}
+	if ((prev_green < 0) || (prev_green > 255) || (prev_blue < 0) || (prev_blue > 255)) {
 		return -1;
 	}
 	if (visible != 0) {
@@ -429,6 +452,12 @@ format_state(char *dst, int cap, int alpha, int red, int green, int blue,
 	at = put_hex2(dst, cap, at, fg_red);
 	at = put_hex2(dst, cap, at, fg_green);
 	at = put_hex2(dst, cap, at, fg_blue);
+	at = put_str(dst, cap, at, "\nprev-alpha ");
+	at = put_u(dst, cap, at, (unsigned)prev_alpha);
+	at = put_str(dst, cap, at, "\nprev-color ");
+	at = put_hex2(dst, cap, at, prev_red);
+	at = put_hex2(dst, cap, at, prev_green);
+	at = put_hex2(dst, cap, at, prev_blue);
 	at = put_str(dst, cap, at, "\nvisible ");
 	at = put_u(dst, cap, at, vis);
 	at = put_str(dst, cap, at, "\n");

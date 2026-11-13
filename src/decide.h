@@ -28,7 +28,9 @@ typedef enum {
 	CMD_STATUS = 6,
 	CMD_VISIBLE = 7,
 	CMD_FG_ALPHA = 8,
-	CMD_FG_COLOR = 9
+	CMD_FG_COLOR = 9,
+	CMD_PREV_ALPHA = 10,
+	CMD_PREV_COLOR = 11
 } cmd_kind;
 
 typedef struct {
@@ -49,6 +51,7 @@ int parse_u8(const char *s, int len, int *out);
 int parse_color(const char *s, int len, int *red, int *green, int *blue);
 cmd parse_line(const char *s, int len);
 int format_state(char *dst, int cap, int alpha, int red, int green, int blue,
-	int fg_alpha, int fg_red, int fg_green, int fg_blue, int visible);
+	int fg_alpha, int fg_red, int fg_green, int fg_blue,
+	int prev_alpha, int prev_red, int prev_green, int prev_blue, int visible);
 
 #endif

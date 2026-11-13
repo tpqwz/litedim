@@ -111,7 +111,9 @@ On this desk the panels are the top three windows in `_NET_CLIENT_LIST_STACKING`
 
 **Foreground.** A second override-redirect sheet, the size of the focused frame, stacked directly above that frame. It uses the same premultiplied tint as the background sheet, with its own level and color (`--fg-alpha`, `--fg-color`, and the Foreground sliders). The default level is 0, so the focused window stays bright. The sheet is not fullscreen, so a panel stacked above the frame stays bright, and a menu stacked above the frame stays bright. While the settings window is the active client, the foreground sheet is unmapped so the controls stay clear. This is shade coverage, not `_NET_WM_WINDOW_OPACITY`: the focused window does not become see-through.
 
-**What this version leaves out.** Animation of the strength. Per-window exceptions other than docks and the settings window. A BMP image in place of flat black, which LeDimmer had as `-image`. Group tracking, so a dialog and its parent can both stay bright.
+**Last window.** The frame that was focused immediately before the current one can take its own level and color (`--prev-alpha`, `--prev-color`, and the Last window sliders). Until those sliders move, it matches the background. Level 0 cuts it out of the background shade and leaves it bright. A higher level is that window's own shade, laid on the bare window, with the same meaning as the background and foreground levels. It is one window, not a group: a dialog and its parent are not kept together.
+
+**What this version leaves out.** Animation of the strength. Per-window exceptions other than docks, the settings window, and that one previous frame. A BMP image in place of flat black, which LeDimmer had as `-image`. Group tracking, so a dialog and its parent can both stay bright.
 
 ## Order of work
 

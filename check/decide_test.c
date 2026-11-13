@@ -94,7 +94,7 @@ test_parse(void)
 	int r = 0;
 	int g = 0;
 	int b = 0;
-	char buf[96];
+	char buf[160];
 	int n;
 	int i = 0;
 	int start = 0;
@@ -130,6 +130,12 @@ test_parse(void)
 	assert(c.kind == CMD_BAD);
 	c = parse_line("fg-color 010203", 15);
 	assert(c.kind == CMD_FG_COLOR && c.red == 1 && c.green == 2 && c.blue == 3);
+	c = parse_line("prev-alpha 7", 12);
+	assert(c.kind == CMD_PREV_ALPHA && c.alpha == 7);
+	c = parse_line("prev-alpha 256", 14);
+	assert(c.kind == CMD_BAD);
+	c = parse_line("prev-color aabbcc", 17);
+	assert(c.kind == CMD_PREV_COLOR && c.red == 170 && c.green == 187 && c.blue == 204);
 	c = parse_line("visible 0", 9);
 	assert(c.kind == CMD_VISIBLE && c.visible == 0);
 	c = parse_line("visible 2", 9);
@@ -137,11 +143,11 @@ test_parse(void)
 	c = parse_line("nope", 4);
 	assert(c.kind == CMD_BAD);
 
-	n = format_state(buf, 96, 96, 18, 52, 255, 40, 1, 2, 3, 0);
-	assert(n > 0 && n < 96);
-	assert(format_state(0, 96, 1, 0, 0, 0, 0, 0, 0, 0, 1) == -1);
+	n = format_state(buf, 160, 96, 18, 52, 255, 40, 1, 2, 3, 7, 170, 187, 204, 0);
+	assert(n > 0 && n < 160);
+	assert(format_state(0, 160, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1) == -1);
 	assert(strcmp(buf,
-		"alpha 96\ncolor 1234ff\nfg-alpha 40\nfg-color 010203\nvisible 0\n") == 0);
+		"alpha 96\ncolor 1234ff\nfg-alpha 40\nfg-color 010203\nprev-alpha 7\nprev-color aabbcc\nvisible 0\n") == 0);
 	while (i < n) {
 		if (buf[i] == '\n') {
 			c = parse_line(buf + start, i - start);
@@ -153,8 +159,12 @@ test_parse(void)
 				assert(c.kind == CMD_FG_ALPHA && c.alpha == 40);
 			} else if (seen == 3) {
 				assert(c.kind == CMD_FG_COLOR && c.red == 1 && c.green == 2 && c.blue == 3);
+			} else if (seen == 4) {
+				assert(c.kind == CMD_PREV_ALPHA && c.alpha == 7);
+			} else if (seen == 5) {
+				assert(c.kind == CMD_PREV_COLOR && c.red == 170 && c.green == 187 && c.blue == 204);
 			} else {
-				assert(seen == 4);
+				assert(seen == 6);
 				assert(c.kind == CMD_VISIBLE && c.visible == 0);
 			}
 			seen = seen + 1;
@@ -162,8 +172,8 @@ test_parse(void)
 		}
 		i = i + 1;
 	}
-	assert(seen == 5);
-	assert(format_state(buf, 96, 96, 0, 0, 0, 0, 0, 0, 0, 1) == 59);
+	assert(seen == 7);
+	assert(format_state(buf, 160, 96, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1) == 90);
 }
 
 int
