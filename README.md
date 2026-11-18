@@ -1,6 +1,6 @@
 # litedim
 
-Version 0.1.0-beta.1. Dim everything behind the focused window on XFCE, the way KDE's Dim Inactive effect and the Windows program LeDimmer do. A second shade can darken or tint the focused window itself.
+Version 0.1.0-beta.2. Dim everything behind the focused window on XFCE, the way KDE's Dim Inactive effect and the Windows program LeDimmer do. A second shade can darken or tint the focused window itself.
 
 The window manager stays xfwm4. The X server stays XLibre. The dim is one X11 client: a full-screen sheet stacked under the focused frame, a tray icon, and a settings window. All of that is the same executable.
 
@@ -22,7 +22,7 @@ One screen uses those Background sliders. With two or more screens, an All scree
 
 Either click on the tray icon opens a menu: Settings, Shade, Child windows, Last window, and Quit. Settings opens the window. Shade, Child windows, and Last window are checkboxes. Quit leaves. `--no-tray` leaves the shades running with no icon and no settings window. If the panel has no tray, the settings window opens on its own.
 
-Pushes to GitHub build one Linux x86-64 executable named `litedim`. A tag such as `v0.1.0-beta.1` publishes that same file as a release. A tag that contains `-beta` is marked as a pre-release. Copy the file and run it. The machine you run it on needs an X server and a compositor. It does not need a matching `libX11`.
+Pushes to GitHub build one Linux x86-64 executable named `litedim`. A tag such as `v0.1.0-beta.2` publishes that same file as a release. A tag that contains `-beta` is marked as a pre-release. Copy the file and run it. The machine you run it on needs an X server and a compositor. It does not need a matching `libX11`.
 
 `litedim` is one file. Copy that file and run it. It does not need Python or GTK.
 

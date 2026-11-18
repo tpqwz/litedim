@@ -21,7 +21,7 @@
 enum { DEFAULT_ALPHA = 96 };
 enum { LISTEN_BACKLOG = 8 };
 
-static const char version_string[] = "0.1.0-beta.1";
+static const char version_string[] = "0.1.0-beta.2";
 
 static Display *dpy;
 static int scr;
