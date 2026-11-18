@@ -16,9 +16,11 @@ make
 ./litedim --version
 ```
 
-The background coverage defaults to 96, out of 255. Black (`000000`) only darkens. Another color tints that shade. `--alpha 0` starts with both shades unmapped and remembers the levels. The foreground coverage defaults to 0, so the focused window stays bright until `--fg-alpha` or the Foreground slider raises it. That shade is the size of the focused frame and sits just above it, so panels stay bright. The settings window is left bright while it is focused. Last window is the one that was focused just before this one. Until you move its sliders, it matches the background. Level 0 makes that window bright. Any higher level is that window's own shade, on the same scale as the other two.
+The background coverage defaults to 96, out of 255. Black (`000000`) only darkens. Another color tints that shade. `--alpha 0` starts with both shades unmapped and remembers the levels. The foreground coverage defaults to 0, so the focused window stays bright until `--fg-alpha` or the Foreground slider raises it. That shade is the size of the focused frame and sits just above it, so panels stay bright. The settings window is left bright while it is focused. Last window is folded shut until you check it. Checked, its level and color open, and that window can be brighter or darker than the background. Unchecked, it is just part of the background shade. Child windows is off until you check it. Checked, a window and the dialogs that belong to it share one shade: the family you are in uses the foreground level, and the family you just left uses the last-window level.
 
-The tray icon opens the settings window: background, previous, and foreground level and color, hide, and quit. Right-click the icon hides both shades. `--no-tray` leaves the shades running with no icon and no settings window. If the panel has no tray, the settings window opens on its own.
+One screen uses those Background sliders. With two or more screens, an All screens checkbox sits above them. Checked, that one level and color is copied onto every screen. Unchecked, each screen opens its own level and color, starting from the shared values. Foreground and Last window stay one setting for the whole desk. Unplugging a screen removes its block.
+
+Either click on the tray icon opens a menu: Settings, Shade, Child windows, Last window, and Quit. Settings opens the window. Shade, Child windows, and Last window are checkboxes. Quit leaves. `--no-tray` leaves the shades running with no icon and no settings window. If the panel has no tray, the settings window opens on its own.
 
 Pushes to GitHub build one Linux x86-64 executable named `litedim`. A tag such as `v0.1.0-beta.1` publishes that same file as a release. A tag that contains `-beta` is marked as a pre-release. Copy the file and run it. The machine you run it on needs an X server and a compositor. It does not need a matching `libX11`.
 
@@ -39,7 +41,7 @@ status
 quit
 ```
 
-`alpha` and `color` are the background. `fg-alpha` and `fg-color` are the focused window. `prev-alpha` and `prev-color` are the window that was focused just before it. `alpha 0` removes the background shade and leaves the foreground shade in place. `hide` unmaps both and keeps the levels. The levels, colors, and the settings-window position are stored in `~/.config/litedim/config`, so they survive a reboot. The first time that file is missing, an older `/tmp/litedim-<uid>/config` is read once. The settings window opens in the center of the screen until you move it. A second `./litedim` exits if the socket answers. A dead socket is replaced.
+`alpha` and `color` are the background. `fg-alpha` and `fg-color` are the focused window. `prev-alpha` and `prev-color` are the window that was focused just before it. `alpha 0` removes the background shade and leaves the foreground shade in place. `hide` unmaps both and keeps the levels. The levels, colors, All screens choice, per-screen levels, and the settings-window position are stored in `~/.config/litedim/config`, so they survive a reboot. The first time that file is missing, an older `/tmp/litedim-<uid>/config` is read once. The settings window opens in the center of the screen until you move it. A second `./litedim` exits if the socket answers. A dead socket is replaced.
 
 `make check` runs [cite](https://github.com/tpqwz/cite) on `src` for the MISRA C and CERT C rows that tool can see, Frama-C Eva on the arithmetic in `src/decide.c`, and a unit test. A quiet cite run means those rows were quiet. It is not a proof of the whole standards.
 

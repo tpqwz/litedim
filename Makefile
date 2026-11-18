@@ -7,7 +7,7 @@ CC      ?= cc
 CFLAGS  ?= -std=c11 -Os -Wall -Wextra
 CPPFLAGS ?= -D_GNU_SOURCE
 LDFLAGS ?= -static
-LIBS    := $(shell pkg-config --static --libs xrender xfixes xext x11)
+LIBS    := $(shell pkg-config --static --libs xrandr xrender xfixes xext x11)
 CITE    ?= /home/yy/code/offside/cite/build/cite
 SRCS    := src/litedim.c src/decide.c
 

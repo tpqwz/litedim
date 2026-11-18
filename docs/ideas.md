@@ -107,13 +107,17 @@ On this desk the panels are the top three windows in `_NET_CLIENT_LIST_STACKING`
 
 **Cost.** The sheet's contents do not change. The compositor blends one extra fullscreen rectangle when something under it is damaged. At 3440×1440 that is cheap next to a shader pass over every window.
 
-**Toggle.** LeDimmer quits on Ctrl+Shift+Q and has a tray icon. litedim's icon is docked with the panel's system tray. Left click opens the level and the color. Right click hides the sheet and keeps the level. Quit is a button on the settings window. There is no second program.
+**Toggle.** Either click on the tray icon opens a menu: Settings, Shade, Child windows, Last window, and Quit. Shade hides the sheets and keeps the levels. There is no second program.
 
 **Foreground.** A second override-redirect sheet, the size of the focused frame, stacked directly above that frame. It uses the same premultiplied tint as the background sheet, with its own level and color (`--fg-alpha`, `--fg-color`, and the Foreground sliders). The default level is 0, so the focused window stays bright. The sheet is not fullscreen, so a panel stacked above the frame stays bright, and a menu stacked above the frame stays bright. While the settings window is the active client, the foreground sheet is unmapped so the controls stay clear. This is shade coverage, not `_NET_WM_WINDOW_OPACITY`: the focused window does not become see-through.
 
-**Last window.** The frame that was focused immediately before the current one can take its own level and color (`--prev-alpha`, `--prev-color`, and the Last window sliders). Until those sliders move, it matches the background. Level 0 cuts it out of the background shade and leaves it bright. A higher level is that window's own shade, laid on the bare window, with the same meaning as the background and foreground levels. It is one window, not a group: a dialog and its parent are not kept together.
+**Last window.** A check box in the settings window. Unchecked, the section is collapsed and that frame stays under the background shade. Checked, the level and color sliders open. Level 0 leaves the window bright. A higher level is that window's own shade. It is one window, not a group: a dialog and its parent are not kept together, unless Child windows is on.
 
-**What this version leaves out.** Animation of the strength. Per-window exceptions other than docks, the settings window, and that one previous frame. A BMP image in place of flat black, which LeDimmer had as `-image`. Group tracking, so a dialog and its parent can both stay bright.
+**Child windows.** A check box, off until you turn it on. On, windows joined by `WM_TRANSIENT_FOR` are one family: the parent and its dialogs. The focused family takes the foreground level on every member. The family that was focused just before takes the last-window level when that section is open, and the background level when it is not. Up to eight frames in a family. Menus and the panel stay as they are.
+
+**Screens.** One output keeps a single background sheet the size of the root, and the Background sliders are that sheet. Two or more outputs each get a sheet the size of that output. The output under the focused window stacks its sheet beneath that frame. Each other output stacks its sheet beneath the panel, so a window there does not stay bright only because it sits above the focused frame in the one global stack. All screens is a checkbox, on unless you turn it off. On, the Background level and color are copied to every output. Off, the dialog grows one level and color block per output, and those values can diverge. Turning it back on copies the shared level and color over the per-screen values. Foreground and Last window are not per screen.
+
+**What this version leaves out.** Animation of the strength. Per-window exceptions other than docks, the settings window, the optional child-window family, and that one previous family. A BMP image in place of flat black, which LeDimmer had as `-image`.
 
 ## Order of work
 
