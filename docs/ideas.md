@@ -107,7 +107,7 @@ On this desk the panels are the top three windows in `_NET_CLIENT_LIST_STACKING`
 
 **Cost.** The sheet's contents do not change. The compositor blends one extra fullscreen rectangle when something under it is damaged. At 3440×1440 that is cheap next to a shader pass over every window.
 
-**Toggle.** Either click on the tray icon opens a menu: Settings, Shade, Child windows, Last window, and Quit. Shade hides the sheets and keeps the levels. There is no second program.
+**Toggle.** A click or a double-click on the tray icon shows the settings window, or hides it when it is already open. The second press of a double-click does not undo the first. Right-click opens the menu: Settings, Shade, Child windows, Last window, and Quit. Shade hides the sheets and keeps the levels. There is no second program.
 
 **Foreground.** A second override-redirect sheet, the size of the focused frame, stacked directly above that frame. It uses the same premultiplied tint as the background sheet, with its own level and color (`--fg-alpha`, `--fg-color`, and the Foreground sliders). The default level is 0, so the focused window stays bright. The sheet is not fullscreen, so a panel stacked above the frame stays bright, and a menu stacked above the frame stays bright. While the settings window is the active client, the foreground sheet is unmapped so the controls stay clear. This is shade coverage, not `_NET_WM_WINDOW_OPACITY`: the focused window does not become see-through.
 

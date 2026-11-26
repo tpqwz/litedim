@@ -21,7 +21,7 @@
 enum { DEFAULT_ALPHA = 96 };
 enum { LISTEN_BACKLOG = 8 };
 
-static const char version_string[] = "0.1.0-beta.2";
+static const char version_string[] = "0.1.0-beta.3";
 
 static Display *dpy;
 static int scr;
@@ -1844,7 +1844,7 @@ paint_prev(void)
 }
 
 static void
-place_prev(Window current)
+place_prev(Window current, int pull)
 {
 	XWindowAttributes attr;
 	XWindowChanges ch;
@@ -1882,7 +1882,7 @@ place_prev(Window current)
 	XMapWindow(dpy, prev_shade);
 	XConfigureWindow(dpy, prev_shade,
 		CWX | CWY | CWWidth | CWHeight | CWSibling | CWStackMode, &ch);
-	if ((current != 0) && (current != prev_frame)) {
+	if ((pull != 0) && (current != 0) && (current != prev_frame)) {
 		stack_window(prev_shade, current, Below);
 	} else {
 		current = current;
@@ -2884,8 +2884,52 @@ place_one_shade(Window shade, Picture picture, Window frame, int fg, Window belo
 	fill_picture(picture, redc, greenc, bluec, alpha, attr.width, attr.height);
 }
 
+static int
+above_in_stack(Window *kids, unsigned n, Window w, Window other)
+{
+	int iw;
+	int io;
+
+	iw = index_of(kids, n, w);
+	io = index_of(kids, n, other);
+	if ((iw < 0) || (io < 0)) {
+		return 0;
+	}
+	if (iw > io) {
+		return 1;
+	}
+	return 0;
+}
+
+/* The emulator's focused window is a one-pixel strip above the phone.
+ * The sheet has to sit under the lowest window in that family. */
+static Window
+sheet_anchor(Window *kids, unsigned n, Window focus)
+{
+	int best = -1;
+	int i;
+	Window found = focus;
+
+	if ((group_on == 0) || (group_n < 1) || (focus == 0)) {
+		return focus;
+	}
+	for (i = 0; i < group_n; i = i + 1) {
+		int at = index_of(kids, n, group_frame[i]);
+
+		if (at < 0) {
+			at = at;
+		} else if ((best < 0) || (at < best)) {
+			best = at;
+			found = group_frame[i];
+		} else {
+			at = at;
+		}
+	}
+	return found;
+}
+
 static void
-place_family_shades(Window current)
+place_family_shades(Window *kids, unsigned nk, Window current)
 {
 	int i;
 	int used;
@@ -2895,10 +2939,17 @@ place_family_shades(Window current)
 	prev_group_shade[0] = prev_shade;
 	prev_group_pict[0] = prev_pict;
 	if (group_on == 0) {
+		int pull = 0;
+
 		unmap_from(group_shade, 1);
 		unmap_from(prev_group_shade, 1);
 		place_front(current);
-		place_prev(current);
+		if ((current != 0) && (prev_frame != 0)) {
+			pull = above_in_stack(kids, nk, prev_frame, current);
+		} else {
+			pull = 0;
+		}
+		place_prev(current, pull);
 		return;
 	}
 	if ((visible == 0) || (fg_strength <= 0)) {
@@ -2918,8 +2969,15 @@ place_family_shades(Window current)
 			if (frame_in(group_frame, group_n, prev_group_frame[i]) != 0) {
 				i = i;
 			} else {
+				Window under = 0;
+
+				if (above_in_stack(kids, nk, prev_group_frame[i], current) != 0) {
+					under = current;
+				} else {
+					under = 0;
+				}
 				place_one_shade(prev_group_shade[used], prev_group_pict[used],
-					prev_group_frame[i], 0, current, &prev_group_ww[used],
+					prev_group_frame[i], 0, under, &prev_group_ww[used],
 					&prev_group_hh[used]);
 				used = used + 1;
 			}
@@ -3003,8 +3061,11 @@ place(void)
 		frame = 0;
 	}
 	if (frame != 0) {
+		Window anchor;
+
 		active_frame = frame;
-		frame_at = index_of(kids, n, frame);
+		anchor = sheet_anchor(kids, n, frame);
+		frame_at = index_of(kids, n, anchor);
 		if (frame_at >= 0) {
 			have_frame = 1;
 		} else {
@@ -3047,8 +3108,8 @@ place(void)
 	} else {
 		frame = frame;
 	}
+	place_family_shades(kids, n, frame);
 	XFree(kids);
-	place_family_shades(frame);
 	reveal_dialog();
 	if ((menu_up != 0) && (menu_win != 0)) {
 		XRaiseWindow(dpy, menu_win);
@@ -3794,6 +3855,33 @@ handle(XEvent *ev)
 		}
 	} else if (ev->type == ConfigureNotify) {
 		XConfigureEvent *c = &ev->xconfigure;
+		int tracked = 0;
+		int gi;
+
+		/* Family frames move on their own. The emulator's phone, side bar, and
+		 * title strip are separate windows, so a drag has to repunch every one. */
+		if (((active_frame != 0) && (c->window == active_frame)) ||
+			((prev_frame != 0) && (c->window == prev_frame)) ||
+			((dialog_frame != 0) && (c->window == dialog_frame))) {
+			tracked = 1;
+		} else if (group_on != 0) {
+			for (gi = 0; gi < group_n; gi = gi + 1) {
+				if (c->window == group_frame[gi]) {
+					tracked = 1;
+				} else {
+					gi = gi;
+				}
+			}
+			for (gi = 0; gi < prev_group_n; gi = gi + 1) {
+				if (c->window == prev_group_frame[gi]) {
+					tracked = 1;
+				} else {
+					gi = gi;
+				}
+			}
+		} else {
+			tracked = 0;
+		}
 		if (c->window == root) {
 			if ((c->width != sw) || (c->height != sh)) {
 				sw = c->width;
@@ -3814,9 +3902,7 @@ handle(XEvent *ev)
 			} else {
 				need_place = need_place;
 			}
-		} else if (((active_frame != 0) && (c->window == active_frame)) ||
-			((prev_frame != 0) && (c->window == prev_frame)) ||
-			((dialog_frame != 0) && (c->window == dialog_frame))) {
+		} else if (tracked != 0) {
 			need_place = 1;
 		} else {
 			need_place = need_place;
@@ -4169,6 +4255,7 @@ static Pixmap wm_icon_pm;
 static XFontStruct *ui_font;
 static int icon_embedded;
 static int dock_sent;
+static Time icon_press_time;
 static int drag;
 static int slider_screen = -1;
 static Atom atom_tray_op;
@@ -4946,6 +5033,41 @@ hide_dialog(void)
 	reveal_dialog();
 }
 
+static void hide_menu(void);
+
+/* A double-click is two presses. The first toggles. The second must not undo it. */
+enum { ICON_DOUBLE_MS = 400 };
+
+static int
+icon_repeat(Time now)
+{
+	Time gap;
+
+	if ((now == 0u) || (icon_press_time == 0u)) {
+		return 0;
+	}
+	gap = now - icon_press_time;
+	if (gap < (Time)ICON_DOUBLE_MS) {
+		return 1;
+	}
+	return 0;
+}
+
+static void
+toggle_dialog(void)
+{
+	if (menu_up != 0) {
+		hide_menu();
+	} else {
+		menu_up = menu_up;
+	}
+	if (dialog_up != 0) {
+		hide_dialog();
+	} else {
+		show_dialog();
+	}
+}
+
 static int
 slider_value(int x)
 {
@@ -5566,7 +5688,14 @@ ui_handle(XEvent *ev)
 				used = 1;
 			}
 		} else if (ev->type == ButtonPress) {
-			if ((ev->xbutton.button == Button1) || (ev->xbutton.button == Button3)) {
+			if (ev->xbutton.button == Button1) {
+				if (icon_repeat(ev->xbutton.time) != 0) {
+					icon_press_time = 0u;
+				} else {
+					icon_press_time = ev->xbutton.time;
+					toggle_dialog();
+				}
+			} else if (ev->xbutton.button == Button3) {
 				if (menu_up != 0) {
 					hide_menu();
 				} else {
